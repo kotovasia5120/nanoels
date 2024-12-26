@@ -15,9 +15,9 @@ const int ENCODER_BACKLASH = 3; // Numer of impulses encoder can issue without m
 // Main lead screw (Z) parameters.
 const long SCREW_Z_DU = 20000; // 2mm lead screw in deci-microns (10^-7 of a meter)
 const long MOTOR_STEPS_Z = 800;
-const long SPEED_START_Z = 0.1 * MOTOR_STEPS_Z; // Initial speed of a motor, steps / second.
-const long ACCELERATION_Z = 20 * MOTOR_STEPS_Z; // Acceleration of a motor, steps / second ^ 2.
-const long SPEED_MANUAL_MOVE_Z = 12 * MOTOR_STEPS_Z; // Maximum speed of a motor during manual move, steps / second.
+const long SPEED_START_Z = 0.2 * MOTOR_STEPS_Z; // Initial speed of a motor, steps / second.
+const long ACCELERATION_Z = 17 * MOTOR_STEPS_Z; // Acceleration of a motor, steps / second ^ 2.
+const long SPEED_MANUAL_MOVE_Z = 18 * MOTOR_STEPS_Z; // Maximum speed of a motor during manual move, steps / second.
 const bool INVERT_Z = true; // change (true/false) if the carriage moves e.g. "left" when you press "right".
 const bool NEEDS_REST_Z = true; // Set to false for closed-loop drivers, true for open-loop.
 const long MAX_TRAVEL_MM_Z = 300; // Lathe bed doesn't allow to travel more than this in one go, 30cm / ~1 foot
@@ -3134,7 +3134,10 @@ void updateAxisSpeeds(long diffX, long diffZ, long diffA1) {
   x.speedMax = sec > 0 ? absX / sec : x.speedManualMove;
   z.speedMax = sec > 0 ? absZ / sec : z.speedManualMove;
   a1.speedMax = sec > 0 ? absC / sec : a1.speedManualMove;
-}
+  if (x.speedMax <= 0) x.speedMax = 1;
+  if (z.speedMax <= 0) z.speedMax = 1;
+  if (a1.speedMax <= 0) a1.speedMax = 1;
+  }
 
 void setFeedRate(const String& command) {
   float feed = getFloat(command, 'F');
