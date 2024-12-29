@@ -3134,9 +3134,9 @@ void updateAxisSpeeds(long diffX, long diffZ, long diffA1) {
   x.speedMax = sec > 0 ? absX / sec : x.speedManualMove;
   z.speedMax = sec > 0 ? absZ / sec : z.speedManualMove;
   a1.speedMax = sec > 0 ? absC / sec : a1.speedManualMove;
-  if (x.speedMax <= 0) x.speedMax = 1;
-  if (z.speedMax <= 0) z.speedMax = 1;
-  if (a1.speedMax <= 0) a1.speedMax = 1;
+  if (x.speedMax < minStepsPerSecX) x.speedMax = minStepsPerSecX;
+  if (z.speedMax < minStepsPerSecZ) z.speedMax = minStepsPerSecZ;
+  if (a1.speedMax < minStepsPerSecA1) a1.speedMax = minStepsPerSecA1;
   }
 
 void setFeedRate(const String& command) {
