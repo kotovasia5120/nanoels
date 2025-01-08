@@ -17,10 +17,10 @@ const long SCREW_Z_DU = 20000; // 2mm lead screw in deci-microns (10^-7 of a met
 const long MOTOR_STEPS_Z = 800;
 const long SPEED_START_Z = 0.2 * MOTOR_STEPS_Z; // Initial speed of a motor, steps / second.
 const long ACCELERATION_Z = 17 * MOTOR_STEPS_Z; // Acceleration of a motor, steps / second ^ 2.
-const long SPEED_MANUAL_MOVE_Z = 18 * MOTOR_STEPS_Z; // Maximum speed of a motor during manual move, steps / second.
+const long SPEED_MANUAL_MOVE_Z = 6 * MOTOR_STEPS_Z; // Maximum speed of a motor during manual move, steps / second.
 const bool INVERT_Z = true; // change (true/false) if the carriage moves e.g. "left" when you press "right".
 const bool NEEDS_REST_Z = true; // Set to false for closed-loop drivers, true for open-loop.
-const long MAX_TRAVEL_MM_Z = 300; // Lathe bed doesn't allow to travel more than this in one go, 30cm / ~1 foot
+const long MAX_TRAVEL_MM_Z = 900; // Lathe bed doesn't allow to travel more than this in one go, 30cm / ~1 foot
 const long BACKLASH_DU_Z = 4500; // 0.65mm backlash in deci-microns (10^-7 of a meter)
 const char NAME_Z = 'Z'; // Text shown on screen before axis position value, GCode axis name
 
