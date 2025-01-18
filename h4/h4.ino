@@ -9,19 +9,19 @@ const int ENCODER_PPR = 2000; // 600 step spindle optical rotary encoder. Fracti
 const int ENCODER_BACKLASH = 3; // Numer of impulses encoder can issue without movement of the spindle
 
 // Spindle rotary encoder pins. Swap values if the rotation direction is wrong.
-#define ENC_A 7
-#define ENC_B 15
+#define ENC_A 10
+#define ENC_B 9
 
 // Main lead screw (Z) parameters.
 const long SCREW_Z_DU = 20000; // 2mm lead screw in deci-microns (10^-7 of a meter)
 const long MOTOR_STEPS_Z = 800;
-const long SPEED_START_Z = 0.2 * MOTOR_STEPS_Z; // Initial speed of a motor, steps / second.
-const long ACCELERATION_Z = 17 * MOTOR_STEPS_Z; // Acceleration of a motor, steps / second ^ 2.
+const long SPEED_START_Z = 0.5 * MOTOR_STEPS_Z; // Initial speed of a motor, steps / second.
+const long ACCELERATION_Z = 30 * MOTOR_STEPS_Z; // Acceleration of a motor, steps / second ^ 2.
 const long SPEED_MANUAL_MOVE_Z = 6 * MOTOR_STEPS_Z; // Maximum speed of a motor during manual move, steps / second.
 const bool INVERT_Z = true; // change (true/false) if the carriage moves e.g. "left" when you press "right".
 const bool NEEDS_REST_Z = true; // Set to false for closed-loop drivers, true for open-loop.
-const long MAX_TRAVEL_MM_Z = 900; // Lathe bed doesn't allow to travel more than this in one go, 30cm / ~1 foot
-const long BACKLASH_DU_Z = 4500; // 0.65mm backlash in deci-microns (10^-7 of a meter)
+const long MAX_TRAVEL_MM_Z = 600; // Lathe bed doesn't allow to travel more than this in one go, 60cm / ~2 foot
+const long BACKLASH_DU_Z = 4500; // 0.45mm backlash in deci-microns (10^-7 of a meter)
 const char NAME_Z = 'Z'; // Text shown on screen before axis position value, GCode axis name
 
 // Cross-slide lead screw (X) parameters.
@@ -33,7 +33,7 @@ const long SPEED_MANUAL_MOVE_X = 3 * MOTOR_STEPS_X; // Maximum speed of a motor 
 const bool INVERT_X = true; // change (true/false) if the carriage moves e.g. "left" when you press "right".
 const bool NEEDS_REST_X = false; // Set to false for all kinds of drivers or X will be unlocked when not moving.
 const long MAX_TRAVEL_MM_X = 100; // Cross slide doesn't allow to travel more than this in one go, 10cm
-const long BACKLASH_DU_X = 4700; // 0.15mm backlash in deci-microns (10^-7 of a meter)
+const long BACKLASH_DU_X = 4700; // 0.47mm backlash in deci-microns (10^-7 of a meter)
 const char NAME_X = 'X'; // Text shown on screen before axis position value, GCode axis name
 
 // Manual stepping with left/right/up/down buttons. Only used when step isn't default continuous (1mm or 0.1").
@@ -91,7 +91,7 @@ const long STEPPED_ENABLE_DELAY_MS = 100; // Delay after stepper is enabled and 
 const float LINEAR_INTERPOLATION_PRECISION = 0.1; // 0 < x <= 1, smaller values make for quicker G0 and G1 moves
 const long GCODE_WAIT_EPSILON_STEPS = 10;
 const bool SPINDLE_PAUSES_GCODE = true; // pause GCode execution when spindle stops
-const int GCODE_MIN_RPM = 30; // pause GCode execution if RPM is below this
+const int GCODE_MIN_RPM = 60; // pause GCode execution if RPM is below this
 
 // To be incremented whenever a measurable improvement is made.
 #define SOFTWARE_VERSION 99
@@ -99,30 +99,30 @@ const int GCODE_MIN_RPM = 30; // pause GCode execution if RPM is below this
 // To be changed whenever a different PCB / encoder / stepper / ... design is used.
 #define HARDWARE_VERSION 4
 
-#define Z_ENA 16
-#define Z_DIR 17
-#define Z_STEP 18
+#define Z_ENA 19
+#define Z_DIR 21
+#define Z_STEP 20
 
-#define X_ENA 8
-#define X_DIR 20
-#define X_STEP 19
+#define X_ENA 47
+#define X_DIR 45
+#define X_STEP 48
 
 #define BUZZ 4
-#define KEYS_SCL 5
-#define KEYS_SDA 6
+#define KEYS_SCL 12
+#define KEYS_SDA 11
 
-#define A11 9
-#define A12 10
-#define A13 11
+#define A11 48
+#define A12 3
+#define A13 8
 
-#define A21 12
-#define A22 13
-#define A23 14
+#define A21 18
+#define A22 16
+#define A23 17
 
 #ifdef DISPLAY_I2C_EXPANDER
 // If using display with I2C expander, only two pins are used
-#define DISP_SDA  2
-#define DISP_SCL  1
+#define DISP_SDA  13
+#define DISP_SCL  14
 #else
 // Default standard display
 #define DISP_RS 21
@@ -264,7 +264,6 @@ const float GCODE_FEED_MIN_DU_SEC = 167; // Minimum feed in du/sec in GCode mode
 #define DELAY(x) vTaskDelay(x / portTICK_PERIOD_MS);
 
 // ESP32 hardware pulse counter library used to count spindle encoder pulses.
-//#include "driver/pcnt.h"
 #include "driver/pulse_cnt.h"
 
 #include <SPI.h>
@@ -386,6 +385,7 @@ struct Axis {
   int step; // Step pin of this motor
 };
 
+long numpadBacklash;  //  backlash saved temporarly to wait for button release (long decimicrons)
 pcnt_unit_handle_t pcnt_unit_1 = NULL;
 pcnt_channel_handle_t pcnt_chan_1A = NULL;
 
@@ -450,6 +450,9 @@ void initAxis(Axis* a, char name, bool active, bool rotational, float motorSteps
   a->step = step;
 }
 
+void calculateBacklashSteps(Axis* a) {  //  calculate backlash in steps after reading pref or after modification
+  a->backlashSteps = a->backlashSteps * a->motorSteps / a->screwPitch;
+}
 Axis z;
 Axis x;
 Axis a1;
@@ -508,82 +511,82 @@ long opSubIndex = 0; // Sub-index of an automation operation
 int opDuprSign = 1; // 1 if dupr was positive when operation started, -1 if negative
 long opDupr = 0; // dupr that the multi-pass operation started with
 
-const int customCharMmCode = 0;
+const int customCharMmCode = 0;  //	mario	format corrected to avoid warning from Bxxxxx to 0bxxxxx
 byte customCharMm[] = {
-  B11010,
-  B10101,
-  B10101,
-  B00000,
-  B11010,
-  B10101,
-  B10101,
-  B00000
+  0b11010,
+  0b10101,
+  0b10101,
+  0b00000,
+  0b11010,
+  0b10101,
+  0b10101,
+  0b00000
 };
 const int customCharLimUpCode = 1;
 byte customCharLimUp[] = {
-  B11111,
-  B00100,
-  B01110,
-  B10101,
-  B00100,
-  B00100,
-  B00000,
-  B00000
+  0b11111,
+  0b00100,
+  0b01110,
+  0b10101,
+  0b00100,
+  0b00100,
+  0b00000,
+  0b00000
 };
 const int customCharLimDownCode = 2;
 byte customCharLimDown[] = {
-  B00000,
-  B00100,
-  B00100,
-  B10101,
-  B01110,
-  B00100,
-  B11111,
-  B00000
+  0b00000,
+  0b00100,
+  0b00100,
+  0b10101,
+  0b01110,
+  0b00100,
+  0b11111,
+  0b00000
 };
 const int customCharLimLeftCode = 3;
 byte customCharLimLeft[] = {
-  B10000,
-  B10010,
-  B10100,
-  B11111,
-  B10100,
-  B10010,
-  B10000,
-  B00000
+  0b10000,
+  0b10010,
+  0b10100,
+  0b11111,
+  0b10100,
+  0b10010,
+  0b10000,
+  0b00000
 };
 const int customCharLimRightCode = 4;
 byte customCharLimRight[] = {
-  B00001,
-  B01001,
-  B00101,
-  B11111,
-  B00101,
-  B01001,
-  B00001,
-  B00000
+  0b00001,
+  0b01001,
+  0b00101,
+  0b11111,
+  0b00101,
+  0b01001,
+  0b00001,
+  0b00000
 };
 const int customCharLimUpDownCode = 5;
 byte customCharLimUpDown[] = {
-  B11111,
-  B00100,
-  B01110,
-  B00000,
-  B01110,
-  B00100,
-  B11111,
-  B00000
+  0b11111,
+  0b00100,
+  0b01110,
+  0b00000,
+  0b01110,
+  0b00100,
+  0b11111,
+  0b00000
 };
 const int customCharLimLeftRightCode = 6;
 byte customCharLimLeftRight[] = {
-  B00000,
-  B10001,
-  B10001,
-  B11111,
-  B10001,
-  B10001,
-  B00000,
-  B00000
+  0b00000,
+  0b10001,
+  0b10001,
+  0b11111,
+  0b10001,
+  0b10001,
+  0b00000,
+  0b00000
 };
 
 String gcodeCommand = "";
@@ -1613,7 +1616,7 @@ bool removeAllGcode() {
 
 /* Init and start of pulse counter for encoder interface */
 /* References
- * https://docs.espressif.com/projects/esp-idf/en/v5.1.4/esp32/api-reference/peripherals/pcnt.html
+ * https://docs.espressif.com/projects/esp-idf/en/v5.4/esp32/api-reference/peripherals/pcnt.html
  * https://github.com/espressif/esp-idf/blob/v5.2.2/examples/peripherals/pcnt/rotary_encoder/main/rotary_encoder_example_main.c
  */
 void startPulseCounter()
@@ -1709,9 +1712,6 @@ void setup() {
     DLOW(A21);
   }
 
-  // Starting the hardware timer
-  async_timer = timerBegin(TIMER_RESOLUTION_HZ);
-
   Preferences pref;
   pref.begin(PREF_NAMESPACE);
   if (pref.getInt(PREF_VERSION) != PREFERENCES_VERSION) {
@@ -1800,6 +1800,7 @@ void setup() {
   lcd.createChar(customCharLimUpDownCode, customCharLimUpDown);
   lcd.createChar(customCharLimLeftRightCode, customCharLimLeftRight);
 
+  Serial.begin(115200);
 
 
   if (!I2C_keys.begin(KEYS_SDA, KEYS_SCL)) {
