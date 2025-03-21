@@ -86,7 +86,7 @@ Scale and joystick terminals aren't used in the code yet.
 - Install the [Arduino IDE](https://docs.arduino.cc/software/ide-v2)
 - Add `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json` in [Preferences as "Additional board manager URLs"](https://github.com/kachurovskiy/nanoels/assets/517919/dcc023e6-20fc-4284-ba56-d466dbe4ce53)
 - Install `esp32` [via Board Manager](https://github.com/kachurovskiy/nanoels/assets/517919/094d00ff-1e51-4f26-bb81-aa4ad42bde2a)
-- Install `PS2KeyAdvanced` via Arduino IDE Library Manager
+- Install `PS2KeyAdvanced` and `WebSockets` via Arduino IDE Library Manager
 - Download [this repository](https://github.com/kachurovskiy/nanoels/archive/refs/heads/main.zip), unzip, go to `h5` directory and open `h5.ino` file in the Arduino IDE
 - Check the top constants (e.g. encoder steps, motor steps, display offset) and adjust if needed
 - Select "ESP32S3 Dev Module" as device at the top, pick COM port that appears when you connect the device with a USB cable
@@ -117,7 +117,7 @@ It's early days for H5. For now it works the same as H4, [please read H4 manual 
 - Enter turns on the current mode
 - Esc is stop
 - A W D S control limits
-- Win controls angle / rpm display
+- Win controls angle / rpm display / WiFi status
 - Tilda / backtick (key under ESC) controls step
 - M changes metric / inch / tpi
 - R for reverse
@@ -139,6 +139,14 @@ It's early days for H5. For now it works the same as H4, [please read H4 manual 
 - C disables / enables X axis
 - Q disables / enables Z axis
 - O pressed while a number is entered zeroes X from diameter (on H4 this was on `A`)
+
+## GCode over WiFi for complex parts
+
+Specify your WiFi network name and password in https://github.com/kachurovskiy/nanoels/blob/main/h5/h5.ino#L43-L44 and use Win keyboard key to see the IP address NanoEls connected on. Enter that address in the browser to see the Web UI. It can be used to save GCode files onto controller and run them later at the machine in the GCODE mode.
+
+To generate GCode for your parts, upload STL model of your part to https://kachurovskiy.com/lathecode/ and specify parameters like stock diameter and tool used.
+
+![image](https://github.com/user-attachments/assets/aa6fadc7-5d02-4daa-a4c3-610740492b99)
 
 ## Custom keyboard mapping
 
