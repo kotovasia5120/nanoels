@@ -21,7 +21,6 @@ const long SPEED_MANUAL_MOVE_Z = 6 * MOTOR_STEPS_Z; // Maximum speed of a motor 
 const bool INVERT_Z = true; // change (true/false) if the carriage moves e.g. "left" when you press "right".
 const bool NEEDS_REST_Z = true; // Set to false for closed-loop drivers, true for open-loop.
 const long MAX_TRAVEL_MM_Z = 600; // Lathe bed doesn't allow to travel more than this in one go, 60cm / ~2 foot
-const long BACKLASH_DU_Z = 4500; // 0.45mm backlash in deci-microns (10^-7 of a meter)
 const char NAME_Z = 'Z'; // Text shown on screen before axis position value, GCode axis name
 
 // Cross-slide lead screw (X) parameters.
@@ -33,7 +32,6 @@ const long SPEED_MANUAL_MOVE_X = 3 * MOTOR_STEPS_X; // Maximum speed of a motor 
 const bool INVERT_X = true; // change (true/false) if the carriage moves e.g. "left" when you press "right".
 const bool NEEDS_REST_X = false; // Set to false for all kinds of drivers or X will be unlocked when not moving.
 const long MAX_TRAVEL_MM_X = 100; // Cross slide doesn't allow to travel more than this in one go, 10cm
-const long BACKLASH_DU_X = 4700; // 0.47mm backlash in deci-microns (10^-7 of a meter)
 const char NAME_X = 'X'; // Text shown on screen before axis position value, GCode axis name
 
 // Manual stepping with left/right/up/down buttons. Only used when step isn't default continuous (1mm or 0.1").
@@ -214,6 +212,8 @@ const int GCODE_MIN_RPM = 60; // pause GCode execution if RPM is below this
 #define PREF_TURN_PASSES "tp"
 #define PREF_MOVE_STEP "ms"
 #define PREF_AUX_FORWARD "af"
+#define PREF_BACKLASH_Z "blz"
+#define PREF_BACKLASH_X "blx"
 
 #define MOVE_STEP_1 10000 // 1mm
 #define MOVE_STEP_2 1000 // 0.1mm
@@ -377,6 +377,8 @@ struct Axis {
   bool needsRest; // set to false for closed-loop drivers, true for open-loop.
   bool movingManually; // whether stepper is being moved by left/right buttons
   long estopSteps; // amount of steps to exceed machine limits
+  long backlash;              //  backlash (long decimicrons)
+  long savedBacklash;     //  backlash saved in pref (long decimicrons)
   long backlashSteps; // amount of steps in reverse direction to re-engage the carriage
   long gcodeRelativePos; // absolute position in steps that relative GCode refers to
 
@@ -444,6 +446,8 @@ void initAxis(Axis* a, char name, bool active, bool rotational, float motorSteps
   a->estopSteps = maxTravelMm * 10000 / a->screwPitch * a->motorSteps;
   a->backlashSteps = backlashDu * a->motorSteps / a->screwPitch;
   a->gcodeRelativePos = 0;
+  a->backlash = 0;           //  
+  a->savedBacklash = 0;  //
 
   a->ena = ena;
   a->dir = dir;
@@ -451,7 +455,7 @@ void initAxis(Axis* a, char name, bool active, bool rotational, float motorSteps
 }
 
 void calculateBacklashSteps(Axis* a) {  //  calculate backlash in steps after reading pref or after modification
-  a->backlashSteps = a->backlashSteps * a->motorSteps / a->screwPitch;
+  a->backlashSteps = a->backlash * a->motorSteps / a->screwPitch;
 }
 Axis z;
 Axis x;
@@ -1719,8 +1723,8 @@ void setup() {
     pref.putInt(PREF_VERSION, PREFERENCES_VERSION);
   }
 
-  initAxis(&z, NAME_Z, true, false, MOTOR_STEPS_Z, SCREW_Z_DU, SPEED_START_Z, SPEED_MANUAL_MOVE_Z, ACCELERATION_Z, INVERT_Z, NEEDS_REST_Z, MAX_TRAVEL_MM_Z, BACKLASH_DU_Z, Z_ENA, Z_DIR, Z_STEP);
-  initAxis(&x, NAME_X, true, false, MOTOR_STEPS_X, SCREW_X_DU, SPEED_START_X, SPEED_MANUAL_MOVE_X, ACCELERATION_X, INVERT_X, NEEDS_REST_X, MAX_TRAVEL_MM_X, BACKLASH_DU_X, X_ENA, X_DIR, X_STEP);
+  initAxis(&z, NAME_Z, true, false, MOTOR_STEPS_Z, SCREW_Z_DU, SPEED_START_Z, SPEED_MANUAL_MOVE_Z, ACCELERATION_Z, INVERT_Z, NEEDS_REST_Z, MAX_TRAVEL_MM_Z, 0, Z_ENA, Z_DIR, Z_STEP);
+  initAxis(&x, NAME_X, true, false, MOTOR_STEPS_X, SCREW_X_DU, SPEED_START_X, SPEED_MANUAL_MOVE_X, ACCELERATION_X, INVERT_X, NEEDS_REST_X, MAX_TRAVEL_MM_X, 0, X_ENA, X_DIR, X_STEP);
   initAxis(&a1, NAME_A1, ACTIVE_A1, ROTARY_A1, MOTOR_STEPS_A1, SCREW_A1_DU, SPEED_START_A1, SPEED_MANUAL_MOVE_A1, ACCELERATION_A1, INVERT_A1, NEEDS_REST_A1, MAX_TRAVEL_MM_A1, BACKLASH_DU_A1, A11, A12, A13);
 
   isOn = false;
@@ -1734,6 +1738,8 @@ void setup() {
   z.savedLeftStop = z.leftStop = pref.getLong(PREF_LEFT_STOP_Z, LONG_MAX);
   z.savedRightStop = z.rightStop = pref.getLong(PREF_RIGHT_STOP_Z, LONG_MIN);
   z.savedDisabled = z.disabled = pref.getBool(PREF_DISABLED_Z, false);
+  z.savedBacklash = z.backlash = pref.getLong(PREF_BACKLASH_Z);  //  get backlash from pref in decimicrons
+  calculateBacklashSteps(&z);                                                            // calculate backlash in steps
   x.savedPos = x.pos = pref.getLong(PREF_POS_X);
   x.savedPosGlobal = x.posGlobal = pref.getLong(PREF_POS_GLOBAL_X);
   x.savedOriginPos = x.originPos = pref.getLong(PREF_ORIGIN_POS_X);
@@ -1741,6 +1747,8 @@ void setup() {
   x.savedLeftStop = x.leftStop = pref.getLong(PREF_LEFT_STOP_X, LONG_MAX);
   x.savedRightStop = x.rightStop = pref.getLong(PREF_RIGHT_STOP_X, LONG_MIN);
   x.savedDisabled = x.disabled = pref.getBool(PREF_DISABLED_X, false);
+  x.savedBacklash = x.backlash = pref.getLong(PREF_BACKLASH_X);  //  get backlash from pref in decimicrons
+  calculateBacklashSteps(&x);                                                            // calculate backlash in steps
   a1.savedPos = a1.pos = pref.getLong(PREF_POS_A1);
   a1.savedPosGlobal = a1.posGlobal = pref.getLong(PREF_POS_GLOBAL_A1);
   a1.savedOriginPos = a1.originPos = pref.getLong(PREF_ORIGIN_POS_A1);
@@ -1832,11 +1840,7 @@ void setup() {
 
 bool saveIfChanged() {
   // Should avoid calling Preferences whenever possible to reduce memory wear and avoid ~20ms write delay that blocks interrupts.
-  if (dupr == savedDupr && starts == savedStarts && z.pos == z.savedPos && z.originPos == z.savedOriginPos && z.posGlobal == z.savedPosGlobal && z.motorPos == z.savedMotorPos && z.leftStop == z.savedLeftStop && z.rightStop == z.savedRightStop && z.disabled == z.savedDisabled &&
-      spindlePos == savedSpindlePos && spindlePosAvg == savedSpindlePosAvg && spindlePosSync == savedSpindlePosSync && savedSpindlePosGlobal == spindlePosGlobal && showAngle == savedShowAngle && showTacho == savedShowTacho && moveStep == savedMoveStep &&
-      mode == savedMode && measure == savedMeasure && x.pos == x.savedPos && x.originPos == x.savedOriginPos && x.posGlobal == x.savedPosGlobal && x.motorPos == x.savedMotorPos && x.leftStop == x.savedLeftStop && x.rightStop == x.savedRightStop && x.disabled == x.savedDisabled &&
-      a1.pos == a1.savedPos && a1.originPos == a1.savedOriginPos && a1.posGlobal == a1.savedPosGlobal && a1.motorPos == a1.savedMotorPos && a1.leftStop == a1.savedLeftStop && a1.rightStop == a1.savedRightStop && a1.disabled == a1.savedDisabled &&
-      coneRatio == savedConeRatio && turnPasses == savedTurnPasses && savedAuxForward == auxForward) return false;
+  if (dupr == savedDupr && starts == savedStarts && z.pos == z.savedPos && z.originPos == z.savedOriginPos && z.posGlobal == z.savedPosGlobal && z.motorPos == z.savedMotorPos && z.leftStop == z.savedLeftStop && z.rightStop == z.savedRightStop && z.disabled == z.savedDisabled && z.backlash == z.savedBacklash && spindlePos == savedSpindlePos && spindlePosAvg == savedSpindlePosAvg && spindlePosSync == savedSpindlePosSync && savedSpindlePosGlobal == spindlePosGlobal && showAngle == savedShowAngle && showTacho == savedShowTacho && moveStep == savedMoveStep && mode == savedMode && measure == savedMeasure && x.pos == x.savedPos && x.originPos == x.savedOriginPos && x.posGlobal == x.savedPosGlobal && x.motorPos == x.savedMotorPos && x.leftStop == x.savedLeftStop && x.rightStop == x.savedRightStop && x.disabled == x.savedDisabled && x.backlash == x.savedBacklash && a1.pos == a1.savedPos && a1.originPos == a1.savedOriginPos && a1.posGlobal == a1.savedPosGlobal && a1.motorPos == a1.savedMotorPos && a1.leftStop == a1.savedLeftStop && a1.rightStop == a1.savedRightStop && a1.disabled == a1.savedDisabled && coneRatio == savedConeRatio && turnPasses == savedTurnPasses && savedAuxForward == auxForward) return false;
 
   Preferences pref;
   pref.begin(PREF_NAMESPACE);
@@ -1849,6 +1853,10 @@ bool saveIfChanged() {
   if (z.leftStop != z.savedLeftStop) pref.putLong(PREF_LEFT_STOP_Z, z.savedLeftStop = z.leftStop);
   if (z.rightStop != z.savedRightStop) pref.putLong(PREF_RIGHT_STOP_Z, z.savedRightStop = z.rightStop);
   if (z.disabled != z.savedDisabled) pref.putBool(PREF_DISABLED_Z, z.savedDisabled = z.disabled);
+  if (z.backlash != z.savedBacklash) {
+    pref.putLong(PREF_BACKLASH_Z, z.savedBacklash = z.backlash);  //  save backlash in pref
+    calculateBacklashSteps(&z);
+  }
   if (spindlePos != savedSpindlePos) pref.putLong(PREF_SPINDLE_POS, savedSpindlePos = spindlePos);
   if (spindlePosAvg != savedSpindlePosAvg) pref.putLong(PREF_SPINDLE_POS_AVG, savedSpindlePosAvg = spindlePosAvg);
   if (spindlePosSync != savedSpindlePosSync) pref.putInt(PREF_OUT_OF_SYNC, savedSpindlePosSync = spindlePosSync);
@@ -1865,6 +1873,10 @@ bool saveIfChanged() {
   if (x.leftStop != x.savedLeftStop) pref.putLong(PREF_LEFT_STOP_X, x.savedLeftStop = x.leftStop);
   if (x.rightStop != x.savedRightStop) pref.putLong(PREF_RIGHT_STOP_X, x.savedRightStop = x.rightStop);
   if (x.disabled != x.savedDisabled) pref.putBool(PREF_DISABLED_X, x.savedDisabled = x.disabled);
+  if (x.backlash != x.savedBacklash) {
+    pref.putLong(PREF_BACKLASH_X, x.savedBacklash = x.backlash);  //  save backlash in pref
+    calculateBacklashSteps(&x);
+  }
   if (a1.pos != a1.savedPos) pref.putLong(PREF_POS_A1, a1.savedPos = a1.pos);
   if (a1.posGlobal != a1.savedPosGlobal) pref.putLong(PREF_POS_GLOBAL_A1, a1.savedPosGlobal = a1.posGlobal);
   if (a1.originPos != a1.savedOriginPos) pref.putLong(PREF_ORIGIN_POS_A1, a1.savedOriginPos = a1.originPos);
@@ -2338,7 +2350,43 @@ void buttonModePress() {
     setModeFromTask(MODE_NORMAL);
   }
 }
+void buttonSettingPress() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  if (!z.disabled) {
+    lcd.print(NAME_Z);
+    lcd.write(customCharLimLeftCode);
+    z.leftStop == LONG_MAX ? lcd.print("-") : printDeciMicrons(stepsToDu(&z, z.leftStop + z.originPos), 2);
+    lcd.setCursor(10, 0);
+    lcd.write(customCharLimRightCode);
+    z.rightStop == LONG_MIN ? lcd.print("-") : printDeciMicrons(stepsToDu(&z, z.rightStop + z.originPos), 2);
+  }
+  lcd.setCursor(0, 1);
 
+  if (!x.disabled) {
+    lcd.print(NAME_X);
+    lcd.write(customCharLimUpCode);
+    x.leftStop == LONG_MAX ? lcd.print("-") : printDeciMicrons(stepsToDu(&x, x.leftStop + x.originPos), 2);
+    lcd.setCursor(10, 1);
+    lcd.write(customCharLimDownCode);
+    x.rightStop == LONG_MIN ? lcd.print("-") : printDeciMicrons(stepsToDu(&x, x.rightStop + x.originPos), 2);
+  }
+  lcd.setCursor(0, 2);
+  if (a1.active && !a1.disabled) {
+    lcd.print(NAME_A1);
+    lcd.write(customCharLimUpCode);
+    a1.rightStop == LONG_MIN ? lcd.print("-") : printDegrees(stepsToDu(&a1, a1.rightStop + a1.originPos));
+    lcd.setCursor(10, 2);
+    lcd.write(customCharLimDownCode);
+    a1.leftStop == LONG_MAX ? lcd.print("-") : printDegrees(stepsToDu(&a1, a1.leftStop + a1.originPos));
+  }
+  lcd.setCursor(0, 3);
+  lcd.print("b Z");
+  printDeciMicrons(z.backlash, 3);
+  lcd.setCursor(10, 3);
+  lcd.print("X");
+  printDeciMicrons(x.backlash, 3);
+}
 void buttonMeasurePress() {
   if (measure == MEASURE_METRIC) {
     setMeasure(MEASURE_INCH);
@@ -2410,7 +2458,41 @@ long numpadToDeciMicrons() {
 float numpadToConeRatio() {
   return getNumpadResult() / 100000.0;
 }
-
+void processB_A_B_BPressRelease(bool fromNumpad, int keyCode, long x0FromDiam, long numpadResult) {  
+  if (!fromNumpad) {
+    if (keyCode == B_A) {
+      x.disabled = !x.disabled;
+      updateEnable(&x);
+    } else if (keyCode == B_B) {
+      z.disabled = !z.disabled;
+      updateEnable(&z);
+    }
+  } else {
+    if (millis() - resetMillis < 3000) {  // if long press
+      if (keyCode == B_A) {
+        x.originPos = x0FromDiam;
+      }
+    } else {
+      if (keyCode == B_A) {
+        x.backlash = numpadResult * 10;
+        Serial.print("x.backlash = ");
+        Serial.print(x.backlash);
+        beep();
+        saveIfChanged();                        // add this line to save immediatly after long press
+        saveTime = micros();                    // add this line to save immediatly after long press
+        beep();                                 // uncomment this if you want another beep after saving, just for confirmation
+      } else if (keyCode == B_B) {
+        z.backlash = numpadResult * 10;
+        Serial.print("z.backlash = ");
+        Serial.print(z.backlash);
+        beep();
+        saveIfChanged();                        // add this line to save immediatly after long press
+        saveTime = micros();                    // add this line to save immediatly after long press
+        beep();                                 // uncomment this if you want another beep after saving, just for confirmation
+      }
+    }
+  }
+}
 bool processNumpad(int keyCode) {
   if (keyCode == B_0) {
     numpadPress(0);
@@ -2534,8 +2616,8 @@ bool processNumpadResult(int keyCode) {
   }
 
   // Set X axis 0 from diameter.
-  if (keyCode == B_A) {
-    a->originPos = -(a->pos + pos) / 2;
+  if (keyCode == B_A || keyCode == B_B) {
+    processB_A_B_BPressRelease(true, keyCode, -(a->pos + pos) / 2, numpadResult);
     return true;
   }
 
@@ -2578,7 +2660,8 @@ void processKeypadEvent() {
   }
 
   // Releases don't matter in numpad but it has to run before LRUD since it might handle those keys.
-  if (isPress && processNumpad(keyCode)) {
+  bool numpadResult = ((isPress && (keyCode != B_A && keyCode != B_B)) || (!isPress && (keyCode == B_A || keyCode == B_B))) ? processNumpad(keyCode) : false;
+  if (isPress && numpadResult) {
     return;
   }
 
@@ -2605,6 +2688,26 @@ void processKeypadEvent() {
     buttonGearsPressed = isPress;
   } else if (keyCode == B_MODE_TURN) {
     buttonTurnPressed = isPress;
+  } else if (keyCode == B_SETTINGS) {
+                                       //  if (isOn) {  // uncomment if don't want settings menu while nanoELS is ON
+                                       //    beep();
+                                       //  } else {
+    if (isPress) {
+      buttonSettingPress();
+      return;
+    } else {
+      lcdHashLine0 = LCD_HASH_INITIAL;
+      return;
+    }
+  }
+
+  if (keyCode == B_A || keyCode == B_B) {
+    if (isPress) {
+      resetMillis = millis();
+    } else {
+      if (!numpadResult) processB_A_B_BPressRelease(false, keyCode, 0, 0);
+    }
+    return;
   }
 
   // For all other keys we have no "release" logic.
@@ -2635,16 +2738,8 @@ void processKeypadEvent() {
     markAxis0(&x);
   } else if (keyCode == B_Z) {
     markAxis0(&z);
-  } else if (keyCode == B_A) {
-    x.disabled = !x.disabled;
-    updateEnable(&x);
-  } else if (keyCode == B_B) {
-    z.disabled = !z.disabled;
-    updateEnable(&z);
   } else if (keyCode == B_STEP) {
     buttonMoveStepPress();
-  } else if (keyCode == B_SETTINGS) {
-    // TODO.
   } else if (keyCode == B_REVERSE) {
     buttonReversePress();
   } else if (keyCode == B_MEASURE) {
