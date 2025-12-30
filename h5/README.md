@@ -2,7 +2,7 @@
 
 Latest version of the electronic lead screw controller for metal lathes.
 
-![PXL_20241218_185410002](https://github.com/user-attachments/assets/1614d9eb-5c23-4cba-9d8e-3f95d866bff7)
+![h5](https://github.com/user-attachments/assets/e8203990-e78e-4aa1-a0c6-807b83c74bca)
 
 ## Parts list
 
